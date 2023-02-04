@@ -2,7 +2,7 @@
 
 // -mouth----------------------------------------------------------------------------
 
-pros::Motor topintake(19);  //<-- reversed
+pros::Motor topintake(11);  //<-- reversed
 int indexer1 = 0;
 bool indexer = true;
 pros::ADIDigitalOut indexer2('F');
@@ -20,9 +20,12 @@ void TopIntake_Control(void *b) {
     if (master.get_digital(DIGITAL_R1)&& get_flywheel() != 0)
      {
       set_topintake(127);  // m ax: 127
+      pros::delay(500);
+      set_topintake(-127);
+      pros::delay(2000);
     }
      else {
-      set_topintake(30);
+      set_topintake(-5);
     }
 
     pros::delay(60);
@@ -37,7 +40,7 @@ Indexer_Control(void *b){
     if (master.get_digital(DIGITAL_R1) && indexer) {
     indexer = false;
     set_indexer(OUT);
-    pros::delay(3000);
+    pros::delay(500);
     set_indexer(IN);
 
    }

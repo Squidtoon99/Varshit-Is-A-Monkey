@@ -1,0 +1,9 @@
+pros build-compile-commands || exit 1
+
+if pros upload; then
+    pros v5 run 1
+    echo "Opening Terminal..."
+    pros terminal
+else
+    echo "Upload failed exiting..."
+fi
