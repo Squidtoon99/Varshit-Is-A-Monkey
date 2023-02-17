@@ -1,23 +1,30 @@
 #include "main.h"
+
+#include <charconv>
+#include <codecvt>
+#include <iostream>
+#include <map>
+#include <string>
+#include <vector>
+
 #include "EZ-Template/util.hpp"
-#include "Intakes.hpp"
 #include "Flywheel.hpp"
+#include "Intakes.hpp"
 #include "dashboard.hpp"
 #include "display/lv_misc/lv_task.h"
 #include "pros/llemu.hpp"
 #include "pros/screen.hpp"
-#include <charconv>
-#include <string>
-#include <vector>
-#include <map>
+#include "pros/vision.h"
 
-
+// Disc Signature ID's
 #define DISC_SIG 1
-#define DISC_SIG2 2
-#define DISC_SIG3 3
-#define DISC_SIG4 4
+#define DISC_SIG_2 2
+
+// Goal Signature ID's
+#define RED_GOAL_SIG_ID 3
+#define BLUE_GOAL_SIG_ID 4
+
 #define VISION_OFFSET 5
-#define GOAL_SIG1 9
 // vars and bools for you fools
 bool initStuff = true;
 
@@ -74,6 +81,7 @@ Drive chassis(
     // ,1
 );
 
+pros::Vision vision_sensor(5, pros::E_VISION_ZERO_CENTER);
 /**
  * Runs initialization code. This occurs as soon as the program is started.
  *
@@ -95,13 +103,13 @@ void initialize() {
 
   // Configure your chassis controls
   chassis.toggle_modify_curve_with_controller(true);  // Enables modifying the controller curve with buttons on the joysticks
-  chassis.reset_gyro();                                // Resets the gyro
+  chassis.reset_gyro();                               // Resets the gyro
   chassis.set_active_brake(0);                        // Sets the active brake kP. We recommend 0.1.
   chassis.set_curve_default(1, 0);                    // Defaults for curve. If using tank, only the first parameter is used. (Comment this line out if you have an SD card!)
-  //default_constants();                                // Set the drive to your own constants from autons.cpp!
-//  exit_condition_defaults();
+  // default_constants();                                // Set the drive to your own constants from autons.cpp!
+  //  exit_condition_defaults();
   set_indexer(IN);
-set_expansion(DOWN);                     // Set the exit conditions to your own constants from autons.cpp!
+  set_expansion(DOWN);  // Set the exit conditions to your own constants from autons.cpp!
 
   // These are already defaulted to these buttons, but you can change the
   // left/right curve buttons here! chassis.set_left_curve_buttons
@@ -123,18 +131,18 @@ set_expansion(DOWN);                     // Set the exit conditions to your own 
   // });
 
   // Initialize chassis and auton selector
-chassis.initialize();
-pros::lcd::initialize();
-// ez::as::initialize();
+  chassis.initialize();
+  pros::lcd::initialize();
+  // ez::as::initialize();
 
-// uses limit switch to recallibrate everything post-auton-setup
-// while (initStuff)
-// {
-//   if (reInitSwitch ())
-//   {
-//     chassis.initialize();
-//   }
-// }
+  // uses limit switch to recallibrate everything post-auton-setup
+  // while (initStuff)
+  // {
+  //   if (reInitSwitch ())
+  //   {
+  //     chassis.initialize();
+  //   }
+  // }
 }
 
 /**
@@ -158,7 +166,6 @@ void competition_initialize() {
   // . . .
 }
 
-
 // void intake_task_fn() {
 //   set_intake(127);
 //   pros::delay(4000);
@@ -175,6 +182,84 @@ void competition_initialize() {
  * will be stopped. Re-enabling the robot will restart the task, not re-start it
  * from where it left off.
  */
+
+void disc_detection(pros::vision_object_s_t obj, int* intake_run) {
+  pros::lcd::print(0, "X: %d", obj.x_middle_coord);
+  pros::lcd::print(1, "Y: %d", obj.y_middle_coord);
+  pros::lcd::print(2, "Width: %d", obj.width);
+  pros::lcd::print(3, "Height: %d", obj.height);
+  printf("width: %d\n", obj.width);
+
+  int area = obj.width * obj.height;
+  pros::lcd::print(4, "Area: %d", area);
+
+  int left_move = (((4800 - min(area, 2500)) * 0.04) + (obj.x_middle_coord + VISION_OFFSET) * 0.2);
+  int right_move = (((4800 - min(area, 2500)) * 0.04) - (obj.x_middle_coord + VISION_OFFSET) * 0.2);
+  pros::lcd::print(5, "Left: %d", left_move);
+  pros::lcd::print(6, "Right: %d", right_move);
+  for (pros::Motor mtr : chassis.left_motors) {
+    mtr.move_velocity(left_move);
+  }
+
+  for (pros::Motor mtr : chassis.right_motors) {
+    mtr.move_velocity(right_move);
+  }
+
+  if (area > 1000) {
+    // create pros task
+    *intake_run = 100;
+    set_intake(127);
+  } else {
+    pros::lcd::print(0, "No object detected");
+    // clear lines 1-7
+    for (int i = 1; i < 8; i++) {
+      pros::lcd::print(i, "");
+    }
+
+    //  stop moving
+    for (pros::Motor mtr : chassis.left_motors) {
+      mtr.move_velocity(0);
+    }
+
+    for (pros::Motor mtr : chassis.right_motors) {
+      mtr.move_velocity(0);
+    }
+
+    if (*intake_run > 0) {
+      intake_run--;
+    } else {
+      set_intake(0);
+    }
+  }
+}
+
+void goal_detection(pros::vision_object_s_t goal) {
+  pros::lcd::print(0, "X: %d", goal.x_middle_coord);
+  pros::lcd::print(1, "Y: %d", goal.y_middle_coord);
+  pros::lcd::print(2, "Width: %d", goal.width);
+  pros::lcd::print(3, "Height: %d", goal.height);
+  printf("width: %d\n", goal.width);
+
+  int area = goal.width * goal.height;
+  pros::lcd::print(4, "Area: %d", area);
+
+  // If too close don't move
+  if (area > 2500) {
+    for (pros::Motor mtr : chassis.left_motors) {
+      mtr.move_velocity(0);
+    }
+
+    for (pros::Motor mtr : chassis.right_motors) {
+      mtr.move_velocity(0);
+    }
+    return;
+  }
+
+  // Center the robot on the goal
+  int left_move = (((4800 - min(area, 2500)) * 0.04) + (goal.x_middle_coord + VISION_OFFSET) * 0.2);
+  int right_move = (((4800 - min(area, 2500)) * 0.04) - (goal.x_middle_coord + VISION_OFFSET) * 0.2);
+}
+
 void autonomous() {
   // set bools false
   // initStuff = false ;
@@ -183,78 +268,77 @@ void autonomous() {
   chassis.reset_drive_sensor();               // Reset drive sensors to 0
   chassis.set_drive_brake(MOTOR_BRAKE_HOLD);  // Set motors to hold.  This helps
   // autonomous consistency.
-  pros::Vision vision_sensor(8, pros::E_VISION_ZERO_CENTER);
+
   vision_sensor.set_exposure(50);
 
-  // pros::vision_signature_s_t DISC_SIG_1 = pros::Vision::signature_from_utility(1, 1153, 1511, 1332, -4387, -3979, -4183, 1.300, 0);
+  pros::vision_signature_s_t DISC_SIG_1 = pros::Vision::signature_from_utility(1, 1153, 1511, 1332, -4387, -3979, -4183, 1.300, 0);
   // pros::vision_signature_s_t DISC_SIG_2 = pros::Vision::signature_from_utility(2, 1177, 1977, 1577, -4953, -4179, -4566, 2.500, 0);
   // pros::vision_signature_s_t DISC_SIG_3 = pros::Vision::signature_from_utility(3, 1411, 1859, 1635, -4361, -3845, -4103, 1.400, 0);
 
-  // Done with exposure 
-  pros::vision_signature_s_t DISC_SIG_4 = pros::Vision::signature_from_utility(1, -1, 853, 426, -4175, -3723, -3949, 3.000, 0);
-  pros::vision_signature_s_t GOAL_SIG = pros::Vision::signature_from_utility(2, -2259, -775, -1517, 1595, 5493, 3544, 1.400, 0);
+  // Done with exposure
+  pros::vision_signature_s_t DISC_SIG_2 = pros::Vision::signature_from_utility(1, -1, 853, 426, -4175, -3723, -3949, 3.000, 0);
+  // pros::vision_signature_s_t GOAL_SIG = pros::Vision::signature_from_utility(2, -2259, -775, -1517, 1595, 5493, 3544, 1.400, 0);
+  // //fill in sig
+  // pros::vision_signature_s_t GOAL_SIG_2 = pros::Vision::signature_from_utility(3, 4755, 7509, 6132, -2875, -403, -1638, 2.500, 0);
+  pros::vision_signature_s_t RED_GOAL_SIG = pros::Vision::signature_from_utility(1, 2303, 9413, 5858, -1703, -1, -852, 1.000, 0);
 
-  // vision_sensor.set_signature(DISC_SIG, &DISC_SIG_1);
-  // vision_sensor.set_signature(DISC_SIG2, &DISC_SIG_2);
-  // vision_sensor.set_signature(DISC_SIG3, &DISC_SIG_3);
-  vision_sensor.set_signature(DISC_SIG4, &DISC_SIG_4);
-  vision_sensor.set_signature(GOAL_SIG1, &GOAL_SIG);
+  // TODO: Configure BLUE_GOAL_SIG
+  pros::vision_signature_s_t BLUE_GOAL_SIG = pros::Vision::signature_from_utility(2, -1, 1, 0, -1, 1, 0, 1.000, 0);
+
+  double distance = 0;
+  double dconst = 5;
+
+  // Home DISC SIG
+  vision_sensor.set_signature(DISC_SIG, &DISC_SIG_1);
+
+  // School Disc Sig
+  vision_sensor.set_signature(DISC_SIG_2, &DISC_SIG_2);
+
+  // Red Goal[School]
+  vision_sensor.set_signature(RED_GOAL_SIG_ID, &RED_GOAL_SIG);
+  vision_sensor.set_signature(BLUE_GOAL_SIG_ID, &BLUE_GOAL_SIG);
+
   int intake_run = 0;
   auto iteration = 0;
   while (true) {
-    pros::vision_object_s_t obj = vision_sensor.get_by_size(0);
-    if (obj.signature == DISC_SIG4) {
-      pros::lcd::print(0, "X: %d", obj.x_middle_coord);
-      pros::lcd::print(1, "Y: %d", obj.y_middle_coord);
-      pros::lcd::print(2, "Width: %d", obj.width);
-      pros::lcd::print(3, "Height: %d", obj.height);
+    pros::vision_object_s_t obj = vision_sensor.get_by_sig(0, DISC_SIG);
 
-      int area = obj.width * obj.height;
-      pros::lcd::print(4, "Area: %d", area);
-
-      int left_move = (((4800 - min(area, 2500)) * 0.04) + (obj.x_middle_coord + VISION_OFFSET) * 0.2);
-      int right_move = (((4800 - min(area, 2500)) * 0.04) - (obj.x_middle_coord + VISION_OFFSET) * 0.2);
-      pros::lcd::print(5, "Left: %d", left_move);
-      pros::lcd::print(6, "Right: %d", right_move);
-      for (pros::Motor mtr : chassis.left_motors) {
-        mtr.move_velocity(left_move);
-      }
-      
-      for (pros::Motor mtr : chassis.right_motors) {
-        mtr.move_velocity(right_move);
-      }
-
-      if (area > 1000) {
-        // create pros task
-        intake_run = 100;
-        set_intake(127);
-      }
-      pros::lcd::print(7, "Iteration: %d", iteration);
-    } else if (obj.signature == GOAL_SIG1) {
-      printf("Width: %d\n", obj.width);
+    if (obj.signature == DISC_SIG) {
+      disc_detection(obj, &intake_run);
     } else {
-      pros::lcd::print(0, "No object detected");
-      // clear lines 1-7
-      for (int i = 1; i < 8; i++) {
-        pros::lcd::print(i, "");
-      }
-
-      //  stop moving
-      for (pros::Motor mtr : chassis.left_motors) {
-        mtr.move_velocity(0);
-      }
-
-      for (pros::Motor mtr : chassis.right_motors) {
-        mtr.move_velocity(0);
-      }
-
-      if (intake_run > 0) {
-        intake_run--;
-      } else {
-        set_intake(0);
-      }
-      pros::lcd::print(7, "Iteration: %d", iteration);
+      printf("No disc detected\n");
     }
+
+    // pros::vision_object_s_t goal = vision_sensor.get_by_sig(0, GOAL_SIG1);
+    pros::vision_object_s_t red_goal = vision_sensor.get_by_sig(0, RED_GOAL_SIG_ID);
+
+    if (red_goal.signature == RED_GOAL_SIG_ID) {
+      goal_detection(red_goal);
+    } else {
+      printf("No goal detected\n")
+    }
+
+    pros::vision_object_s_t blue_goal = vision_sensor.get_by_sig(0, BLUE_GOAL_SIG_ID);
+    // if (goal.signature == GOAL_SIG2) {
+    //   // pros::lcd::print(0, "X: %d", goal.x_middle_coord);
+    //   // pros::lcd::print(1, "Y: %d", goal.y_middle_coord);
+    //   // pros::lcd::print(2, "Width: %d", goal.width);
+    //   // pros::lcd::print(3, "Height: %d", goal.height);
+    //   printf("width: %d", goal.width);
+    // }
+    // std::cout << "Number of Objects Detected: " << vision_sensor.get_object_count();
+    // TODO: Refractor Disc Detection into method
+    // if (obj.signature == DISC_SIG4) {
+    // }
+
+    if (red_goal.signature == RED_GOAL_SIG_ID) {
+      printf("Width: %d\n", obj.width);
+    }
+
+    // if (obj.signature == GOAL_SIG2) {
+    //   distance = obj.width * dconst;
+    // }
+
     pros::delay(20);
     iteration++;
     if (iteration > 10000) {
@@ -262,7 +346,6 @@ void autonomous() {
     }
   }
   // ez::as::auton_selector.call_selected_auton();  // Calls selected auton from autonomous selector.
-
 }
 /**
  * Runs the operator control code. This function will be started in its own task
@@ -278,134 +361,133 @@ void autonomous() {
  * task, not resume it from where it left off.
  */
 void opcontrol() {
-  
-//chassis.set_drive_brake(MOTOR_BRAKE_HOLD);
+  // chassis.set_drive_brake(MOTOR_BRAKE_HOLD);
 
-chassis.reset_pid_targets();
-//reset PID targets to 0
-chassis.reset_gyro();
-//reset gyro position to 0
-chassis.reset_drive_sensor();
-//reset drive sensors to 0
+  chassis.reset_pid_targets();
+  // reset PID targets to 0
+  chassis.reset_gyro();
+  // reset gyro position to 0
+  chassis.reset_drive_sensor();
+  // reset drive sensors to 0
 
-chassis.set_drive_brake(MOTOR_BRAKE_HOLD);
-//set motors to hold. This helps autonomous consistancy
-chassis.set_active_brake(0.0);
-//get match load
-// set_indexer(OUT);
-// flywheel(-69);
-// set_topintake(-43);
-// set_intake(-20);
-// pros::delay(700);
-// set_intake(0);
-// set_topintake(40);
-// set_indexer(IN);
-// flywheel(69);
-// set_intake(0);
-// pros::delay(900);
+  chassis.set_drive_brake(MOTOR_BRAKE_HOLD);
+  // set motors to hold. This helps autonomous consistancy
+  chassis.set_active_brake(0.0);
+  // get match load
+  //  set_indexer(OUT);
+  //  flywheel(-69);
+  //  set_topintake(-43);
+  //  set_intake(-20);
+  //  pros::delay(700);
+  //  set_intake(0);
+  //  set_topintake(40);
+  //  set_indexer(IN);
+  //  flywheel(69);
+  //  set_intake(0);
+  //  pros::delay(900);
 
-// back up and turn
-// chassis.set_drive_pid(8, 80);
-// chassis.wait_drive();
+  // back up and turn
+  // chassis.set_drive_pid(8, 80);
+  // chassis.wait_drive();
 
-// chassis.set_turn_pid(-88.5, 70);
-// chassis.wait_drive();
+  // chassis.set_turn_pid(-88.5, 70);
+  // chassis.wait_drive();
 
-// shoot 3 discs
-// set_indexer(OUT);
-// set_topintake(127);
-// pros::delay(300);
-// set_flywheel(74);
-// set_intake(127);
-// pros::delay(950);
+  // shoot 3 discs
+  // set_indexer(OUT);
+  // set_topintake(127);
+  // pros::delay(300);
+  // set_flywheel(74);
+  // set_intake(127);
+  // pros::delay(950);
 
-set_indexer(IN);
-set_intake(0);
-set_topintake(0);
+  set_indexer(IN);
+  set_intake(0);
+  set_topintake(0);
 
-//get back to match load position
-//chassis.set_drive_pid(-0.9, 90);
-//chassis.wait_drive();
+  // get back to match load position
+  // chassis.set_drive_pid(-0.9, 90);
+  // chassis.wait_drive();
 
-// chassis.set_turn_pid(-1, 80);
-// chassis.wait_drive();
+  // chassis.set_turn_pid(-1, 80);
+  // chassis.wait_drive();
 
-// flywheel(-60);
-// chassis.set_drive_pid(-10.4, 70);
+  // flywheel(-60);
+  // chassis.set_drive_pid(-10.4, 70);
 
-//get match load
-// set_indexer(OUT);
-// pros::delay(300);
-// set_topintake(-42);
-// set_intake(-20);
-// pros::delay(800);
-// set_intake(0);
-// pros::delay(1100);
-// set_indexer(IN);
-// flywheel(69);
-// set_topintake(40);
-// set_intake(0);
-// pros::delay(900);
+  // get match load
+  //  set_indexer(OUT);
+  //  pros::delay(300);
+  //  set_topintake(-42);
+  //  set_intake(-20);
+  //  pros::delay(800);
+  //  set_intake(0);
+  //  pros::delay(1100);
+  //  set_indexer(IN);
+  //  flywheel(69);
+  //  set_topintake(40);
+  //  set_intake(0);
+  //  pros::delay(900);
 
-// back up and turn
-// chassis.set_drive_pid(8, 80);
-// chassis.wait_drive();
+  // back up and turn
+  // chassis.set_drive_pid(8, 80);
+  // chassis.wait_drive();
 
-// chassis.set_turn_pid(-88.5, 70);
-// chassis.wait_drive();
+  // chassis.set_turn_pid(-88.5, 70);
+  // chassis.wait_drive();
 
-// shoot another 3 discs x1
-// set_indexer(OUT);
-// set_topintake(127);
-// pros::delay(300);
-// set_flywheel(72);
-// set_intake(127);
-// pros::delay(950);
+  // shoot another 3 discs x1
+  // set_indexer(OUT);
+  // set_topintake(127);
+  // pros::delay(300);
+  // set_flywheel(72);
+  // set_intake(127);
+  // pros::delay(950);
 
-// set_indexer(IN);
-// set_intake(0);
-// set_topintake(0);
+  // set_indexer(IN);
+  // set_intake(0);
+  // set_topintake(0);
 
-//get back to match load position
-// chassis.set_turn_pid(-1, 80);
-// chassis.wait_drive();
+  // get back to match load position
+  //  chassis.set_turn_pid(-1, 80);
+  //  chassis.wait_drive();
 
-// flywheel(-60);
-// chassis.set_drive_pid(-11, 70);
+  // flywheel(-60);
+  // chassis.set_drive_pid(-11, 70);
 
-// //get match load
-// set_indexer(OUT);
-// pros::delay(300);
-// flywheel(-63);
-// set_topintake(-42);
-// set_intake(-20);
-// pros::delay(900);
-// set_intake(0);
-// pros::delay(1500);
-// set_indexer(IN);
-// flywheel(72);
-// set_topintake(30);
-// set_intake(0);
-// pros::delay(900);
+  // //get match load
+  // set_indexer(OUT);
+  // pros::delay(300);
+  // flywheel(-63);
+  // set_topintake(-42);
+  // set_intake(-20);
+  // pros::delay(900);
+  // set_intake(0);
+  // pros::delay(1500);
+  // set_indexer(IN);
+  // flywheel(72);
+  // set_topintake(30);
+  // set_intake(0);
+  // pros::delay(900);
 
-// back up and turn
-// chassis.set_drive_pid(8, 80);
-// chassis.wait_drive();
+  // back up and turn
+  // chassis.set_drive_pid(8, 80);
+  // chassis.wait_drive();
 
-// chassis.set_turn_pid(-88.5, 70);
-// chassis.wait_drive();
+  // chassis.set_turn_pid(-88.5, 70);
+  // chassis.wait_drive();
 
-// // shoot another 3 discs x2
-// set_indexer(OUT);
-// set_topintake(127);
-// pros::delay(300);
-// set_flywheel(72);
-// set_intake(127);
-// pros::delay(1520);
+  // // shoot another 3 discs x2
+  // set_indexer(OUT);
+  // set_topintake(127);
+  // pros::delay(300);
+  // set_flywheel(72);
+  // set_intake(127);
+  // pros::delay(1520);
 
-// set_indexer(IN);
-// set_intake(0);
-// set_topintake(0);
+  // set_indexer(IN);
+  // set_intake(0);
+  // set_topintake(0);
 
   // This is preference to what you like to drive on.
   chassis.set_drive_brake(MOTOR_BRAKE_COAST);
@@ -428,13 +510,14 @@ set_topintake(0);
     // run drivebase
     if (master.get_digital_new_press(DIGITAL_X)) {
       is_tank = !is_tank;
+      // printf("tank");
+      // pros::lcd::print(6, "Height: %d", 5);
     }
     if (is_tank)
       chassis.tank();  // Tank control
     else
       chassis.arcade_standard(ez::SPLIT);
 
-    
     pros::delay(ez::util::DELAY_TIME);  // This is used for timer calculations!
                                         // Keep this ez::util::DELAY_TIME
   }
