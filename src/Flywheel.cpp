@@ -27,7 +27,7 @@ double flywheel_temp(){
 }
 
 std::vector<int> speeds =
-    {0, 6000, 8000, 11500};
+    {0, 9000, 10000, 11500};
 
 bool speed = false;
 
