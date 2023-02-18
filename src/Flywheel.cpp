@@ -26,9 +26,8 @@ double flywheel_temp(){
   return (Flywheel.get_temperature()+Flywheel2.get_temperature())/2;
 }
 
-// From 5000 to 12000 RPM by orders of 500
 std::vector<int> speeds =
-    {0, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 10000, 10500, 11000, 11500, 12000};
+    {0, 6000, 8000, 11500};
 
 bool speed = false;
 
@@ -45,20 +44,19 @@ void Flywheel_Control(void *) {
   while (true) {
     
     if (master.get_digital_new_press(DIGITAL_R2)) {
-      
       flywheel_index++;
       if (flywheel_index >= speeds.size())
         flywheel_index = 0;
-      printf("flywheel: %d\n", speeds[flywheel_index]);
-    } else if (master.get_digital_new_press(DIGITAL_L2)) {
-      flywheel_index--;
-      if (flywheel_index < 0)
-        flywheel_index = speeds.size() - 1;
       printf("flywheel: %d\n", speeds[flywheel_index]);
     }
     if (master.get_digital_new_press(DIGITAL_Y)) {
       flywheel_index = 0;
       printf("flywheel: %d\n", speeds[flywheel_index]);
+        master.set_text(0, 0, "Example");
+        pros::delay(150);
+        master.clear_line(0);
+        pros::delay(150);
+        master.set_text(0, 0, "Example");
     }
 
     flywheel(speeds[flywheel_index]);

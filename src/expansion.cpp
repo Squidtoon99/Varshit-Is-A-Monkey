@@ -1,10 +1,11 @@
 #include "main.h"
+#include "pros/misc.h"
 
 
 //Driver Control Variables
 bool expansion = true;
 int expansion1 = 0;
-pros::ADIDigitalOut expansion2('B');
+pros::ADIDigitalOut expansion2('C');
 
 
 void set_expansion(bool input)
@@ -21,13 +22,13 @@ Expansion_Control(void *b){
 
 while (true) {
   //toggle for lock4
-  if (master.get_digital(DIGITAL_RIGHT) && expansion) {
+  if (master.get_digital(pros::E_CONTROLLER_DIGITAL_UP) && expansion) {
     expansion = false;
     set_expansion(UP);
 
-  }
-  else if (!master.get_digital(DIGITAL_RIGHT))
-  set_expansion(DOWN);
-
-  }
+  } else if (!master.get_digital(pros::E_CONTROLLER_DIGITAL_UP))
+    set_expansion(DOWN);
+  pros::delay(20);
+}
+  
 }
