@@ -39,7 +39,7 @@ void dashboard_task_fn() {
   pros::screen::fill_rect(0,0,480,272);
   pros::screen::set_pen(COLOR_WHITE);
   while (true) {
-    printf("\033[H\033[2J");
+    // printf("\033[H\033[2J");
     pros::screen::print(pros::E_TEXT_MEDIUM, 1, "Intake:           Flywheel:");
     pros::screen::print(pros::E_TEXT_MEDIUM, 2, "%.3d   %.3d   %.3d   %.3d", get_conveyor_actual_velocity(), get_conveyor_temperature(), flywheel_speed(), flywheel_temp());
     pros::screen::print(pros::E_TEXT_MEDIUM, 3, "Drivetrain");

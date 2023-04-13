@@ -1,8 +1,10 @@
 #include "main.h"
+#include "pros/misc.h"
 #include "pros/motors.h"
 #include <cmath>
 #include <string>
 #include <vector>
+#include "constants.hpp"
 
 pros::Motor Flywheel(12, pros::E_MOTOR_GEARSET_06); //no true
 pros::Motor Flywheel2(13, pros::E_MOTOR_GEARSET_06, true); //true
@@ -27,7 +29,7 @@ double flywheel_temp(){
 }
 
 std::vector<int> speeds =
-    {0, 9000, 10000, 11500};
+    {0, 8500, 10000, 11000};
 
 bool speed = false;
 
@@ -42,24 +44,54 @@ int get_flywheel() { return flywheel_index; }
 
 void Flywheel_Control(void *) {
   while (true) {
-    
+
     if (master.get_digital_new_press(DIGITAL_R2)) {
       flywheel_index++;
-      if (flywheel_index >= speeds.size())
+      if (flywheel_index >= speeds.size()) {
         flywheel_index = 0;
-      printf("flywheel: %d\n", speeds[flywheel_index]);
+      }
     }
     if (master.get_digital_new_press(DIGITAL_Y)) {
       flywheel_index = 0;
-      printf("flywheel: %d\n", speeds[flywheel_index]);
-        master.set_text(0, 0, "Example");
-        pros::delay(150);
-        master.clear_line(0);
-        pros::delay(150);
-        master.set_text(0, 0, "Example");
     }
 
     flywheel(speeds[flywheel_index]);
+    // pros::vision_object_s_t goal = get_high_sensor().get_by_size(0);
+
+    // if (goal.signature < 10) {
+    //     printf("g %d\n", goal.signature);
+    //     auto area = goal.width * goal.height;
+    //   if (area < 500 || goal.height < 8) {
+    //     printf("FALSE POSITIVE [Flywheel]\n");
+    //     return;
+    //   }
+    //   // Function Here
+    //   int rpm = 37.63 * (4011.2 * std::pow(area, -0.5892)) + 5876;
+    //   printf("RPM: %d\n", rpm);
+    //   flywheel(rpm);
+    //   set_flywheel(1);
+
+      // if (abs(goal.x_middle_coord - 10) < 20) {
+      //   continue;
+      // }
+      // // Center the robot on the goal
+      // int left_move = (goal.x_middle_coord - 5) * 0.2;
+      // int right_move = (goal.x_middle_coord - 5) * -0.2;
+
+      // for (pros::Motor mtr : chassis.left_motors) {
+      //   mtr.move_velocity(left_move);
+      // }
+
+      // for (pros::Motor mtr : chassis.right_motors) {
+      //   mtr.move_velocity(right_move);
+      // }
+    // }
+
+    // if (!speed) {
+    //   set_flywheel(0);
+    //   flywheel(0);
+    // }
+    // flywheel(speeds[flywheel_index]);
     pros::delay(20);
   }
 }
